@@ -6,7 +6,7 @@ class KDTree:
 
     def __init__(self, point_list):
         # Dimensionality of space tree is partitioning.
-        self.k = len(point_list[0])
+        self.d = len(point_list[0])
         # Build tree and save reference to root.
         self.root = self.build(point_list, 0)
 
@@ -16,47 +16,56 @@ class KDTree:
         '''
         def __init__(self):
             self.point = None  # Multidimensional node key.
+            self.attr = None   # Info associated with point.
             self.left = None
             self.right = None
 
     def build(self, point_list, level):
+        '''
+        TODO: this
+        Elements in point list should be a tuple representing
+        a k-dimensional point, and an arbitrary object associated
+        with that point.
+        [((15.6, -197.0, 25.1, ..), {'foo': 'bar'..}) ..]
+        '''
         # Base case: no more points in the list means we
         # have arrived at leaf node.
         if len(point_list) == 0:
             return None
 
         # Change axis we split on at each level of the tree.
-        axis = level % self.k
+        axis = level % self.d
 
         # Find median value of axis to split on.
-        sorted_points = sorted(point_list, key=lambda point: point[axis])
+        sorted_points = sorted(point_list, key=lambda point: point[0][axis])
         median_ix = int(len(point_list) / 2)
 
         # Build a new tree, store median point in the root node.
         root = self.Node()
-        root.point = sorted_points[median_ix]
+        point, attr = sorted_points[median_ix]
+        root.point = point
+        root.attr = attr  # Additional point data.
 
         # Recursively construct subtrees on either side of split.
-        # Points with values lesser than median (along current axis) are stored in left subtree.
+        # Store points lesser than median (along current axis) in left subtree.
         root.left = self.build(sorted_points[:median_ix], level + 1)
-        # Points with values greater than median are stored in right subtree.
+        # Store points greater than or equal to median in right subtree.
         root.right = self.build(sorted_points[median_ix + 1:], level + 1)
-
-        # TODO CHANGE THIS? you want strictly less, greater than or equal.
         return root
 
-    def find_nearest_neighbors(self, search_point):
-        # TODO: MAKE THIS WORK WITH KNN
-        # Change axis we split on at each level of the tree.
+    def find_k_nearest_neighbors(self, search_point, k):
+        # Variables needed by KNN routine.
         self.search_point = search_point
-        self.best_guess_node = None
-        self.best_guess_distance = float('inf')
+        self.bpq = BoundedPriorityQueue(k)
         self.knn(self.root, level=0)
-        return self.best_guess_node.point
+        return self.bpq
 
     def knn(self, current_node, level):
-        # TODO: refactor this to do the best distance calculation on the way up.
-        axis = level % self.k
+        '''
+        TODO: recursive function.
+        '''
+        # Change axis we split on at each level of the tree.
+        axis = level % self.d
         a = self.search_point[axis]  # Relevant Dimension (?) of point. TODO: fix comment.
 
         ################
@@ -82,6 +91,68 @@ class KDTree:
         ##############
         # WALKING UP #
         ##############
+        # After recursion bottoms out, walk back up the tree.
+        # Attempt to insert node into bounded priority queue.
+        # If queue is full, it will only be kept if it is closer than the
+        # kth closest point we've seen so far.
+        distance_to_point = self.distance(current_node.point, self.search_point)
+        self.bpq.enqueue(distance_to_point, current_node.attr)
+
+        # Walk back up the tree, check whether candidate hypersphere
+        # created by our current "lowest priority" / largest distance
+        # best guess node crosses splitting hyperplane of current node.
+        # Also, check is the queue is not full yet.
+        kth_largest_distance = self.bpq.lowest_priority_item().key
+        if self.bpq.size < self.bpq.max_elements \
+           or abs(current_node.point[axis] - a) < kth_largest_distance:
+            # If so, check other side of the tree to see if there are
+            # closer points than our best guess.
+            if a < current_node.point[axis]:
+                self.knn(current_node.right, level + 1)
+            else:
+                self.knn(current_node.left, level + 1)
+            # If not, continue to unwind the recursion, implicitly
+            # eliminating all other points from the splitting hyperplane.
+
+    def find_nearest_neighbor(self, search_point):
+        # Variables needed by NN routine.
+        self.search_point = search_point
+        self.best_guess_node = None
+        self.best_guess_distance = float('inf')
+        self.nn(self.root, level=0)
+        return self.best_guess_node
+
+    def nn(self, current_node, level):
+        '''
+        TODO: recursive function.
+        '''
+        # Change axis we split on at each level of the tree.
+        axis = level % self.d
+        a = self.search_point[axis]  # Relevant Dimension (?) of point. TODO: fix comment.
+
+        ################
+        # WALKING DOWN #
+        ################
+        # Walk down the tree recursively, as if you were looking for
+        # the search point in the tree, until you reach a tree leaf.
+        # Save that node point as the "best guess node."
+
+        # Base case: tree leaf reached.
+        if current_node is None:
+            return
+
+        # Descend left or right subtree, on whether search point is greater than
+        # or less than current node point on the current axis. Equivalent to
+        # picking the region of space created by the current point's splitting
+        # hyperplane that search point is in.
+        if a < current_node.point[axis]:
+            self.nn(current_node.left, level + 1)
+        else:
+            self.nn(current_node.right, level + 1)
+
+        ##############
+        # WALKING UP #
+        ##############
         # After recursion bottoms out, walk back up the tree. If current node point is
         # closer to search point than best guess, make it the new best guess.
         distance_to_point = self.distance(current_node.point, self.search_point)
@@ -96,7 +167,7 @@ class KDTree:
             # If so, check other side of the tree to see if there are
             # closer points than our best guess.
             if a < current_node.point[axis]:
-                self.knn(current_node.right, level + 1)
+                self.nn(current_node.right, level + 1)
             # If not, continue to unwind the recursion, implicitly
             # eliminating all other points from the splitting hyperplane.
 
@@ -202,26 +273,30 @@ class PriorityQueue():
         self.sink(1)
         return key, value
 
-def BoundedPriorityQueue():
+
+class BoundedPriorityQueue():
+    '''
+    Bounded Priority Queue ADT. Keeps track
+    of k minimum elements that are inserted into it.
+    '''
 
     def __init__(self, k):
+        self.max_elements = k
         self.head = None
         self.size = 0
-        self.max_elements = k
 
     ##################
     # Helper methods #
     ##################
     class Node():
         '''Node for linked list.'''
-
         def __init__(self):
             self.key = None
             self.value = None
             self.next = None
 
     def _build_node(self, key, value):
-        node = Node()
+        node = self.Node()
         node.key = key
         node.value = value
         return node
@@ -230,27 +305,45 @@ def BoundedPriorityQueue():
         '''Remove node from the tail of the list.'''
         current = self.head
         # Traverse the list.
-        while current.next is not None:
+        while current is not None:
             # If next value is the list tail, remove it.
             if current.next.next is None:
                 current.next = None
             current = current.next
+
+    def __iter__(self):
+        '''Make Priority Queue iterable.'''
+        current = self.head
+        while current is not None:
+            yield current
+            current = current.next
+
+    def lowest_priority_item(self):
+        '''
+        Return the lowest priority item in the queue. If queue
+        is full, this is the kth highest priority item inserted
+        into the queue so far.
+        '''
+        current = self.head
+        while current.next is not None:
+            current = current.next
+        return current
 
     #####################
     # PriorityQueue API #
     #####################
     def enqueue(self, key, value):
         # Make new node.
-        node = _build_node(key, value)
+        node = self._build_node(key, value)
         self.size += 1
 
         # If list is empty, make node the head.
-        current = self.head
-        if current is None:
+        if self.head is None:
             self.head = node
+            self.tail = node
 
         # If key is smaller than head, prepend note to list.
-        if key < current.key:
+        elif key < self.head.key:
             old_head = self.head
             self.head = node
             self.head.next = old_head
@@ -259,12 +352,14 @@ def BoundedPriorityQueue():
         # If not, check if you're smaller than the node after current,
         # and insert yourself in between them if you are.
         # If you aren't, traverse to the next node.
-        while current.next is not None:
-            if key < current.next.key:
-                break
-            current = current.next
-        node.next = current.next
-        current.next = node
+        else:
+            current = self.head
+            while current.next is not None:
+                if key < current.next.key:
+                    break
+                current = current.next
+            node.next = current.next
+            current.next = node
 
         # Keep the list bounded to min k elements.
         if self.size > self.max_elements:

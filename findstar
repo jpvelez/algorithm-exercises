@@ -11,6 +11,34 @@ import argparse
 
 import numpy as np
 
+from starfinder import BoundedPriorityQueue, KDTree
+
+
+def coord(s):
+    '''Constructor for 3-d coordinate type.'''
+    try:
+        x, y, z = map(float, s.split(','))
+        return x, y, z
+    except:
+        raise argparse.ArgumentTypeError("Coordinates must be in x,y,z format.")
+
+
+def parse_args():
+    msg = '''Utility to find k-nearest-neighbor stars to arbitrary, client-supplied points
+    in space. Star dataset must be passed through standard in.'''
+    parser = argparse.ArgumentParser(description=msg)
+    parser.add_argument('-k', '--num-nearest-neighbors',
+                        type=int,
+                        default=5,
+                        help="number of nearest neighbors to find (default: 5)")
+    parser.add_argument('-j', '--search-points',
+                        type=coord, nargs='+',
+                        default=[(0.0, 0.0, 0.0)],
+                        help="locations in space around which to \
+                        search for k nearest neighbors, must be in z,y,z format (default: 0.0,0.0,0.0).")
+    return parser.parse_args()
+
+
 def load_stars(stream):
     '''
     Generator that yields stars in stream as a dictionary.
@@ -19,12 +47,13 @@ def load_stars(stream):
     reader = csv.reader(stream)
     fieldnames = next(reader)
     # Skip Sol, since we want k-nearest neighbors to Sol.
-    # next(reader)
+    next(reader)
     # Parse stars one at a time.
     for star in csv.DictReader(stream, fieldnames=fieldnames):
         yield star
 
-def compute_euclidian_distance(q, p):
+
+def distance(q, p):
     '''
     Compute distance between points p and q in Euclidean
     space, represented as n-dimensional Euclidean vectors.
@@ -35,24 +64,53 @@ def compute_euclidian_distance(q, p):
     p = np.array(p)
     return np.sqrt(np.sum((q - p) ** 2))
 
+
 # TODO: rename
 def find_distances_from_point(point, stars):
     for star in stars:
-        star_coordinates = [float(coord) for coord in (star['x'], star['y'], star['z'])]
-        yield compute_euclidian_distance(sol, star_coordinates)
+        star_coordinates = [float(coord) for coord
+                            in (star['x'], star['y'], star['z'])]
+        yield distance(point, star_coordinates)
+
+
+def print_stars(queue, k, search_point):
+    print('The {} nearest stars to {} are:'.format(k, search_point))
+    for node in queue:
+        distance = node.key
+        star = node.value['id']
+        name = node.value['proper']
+        if name != '':
+            star += " (%s)" % name
+        print("{0}: {1:.2f} parsecs".format(star, distance))
+    print('\n')
+
+
+def star_coords(stars):
+    '''Generator that yields star coordinates.'''
+    for star in stars:
+        coords = [float(coord) for coord in (star['x'], star['y'], star['z'])]
+        yield coords, star
 
 if __name__ == '__main__':
 
+    # Read star dataset from stdin.
     with sys.stdin as stream:
-        k = 5
-        sol = (0.0, 0.0, 0.0)
         stars = load_stars(stream)
-        for star in stars:
-            print(star['id'])
-            star_coordinates = [float(coord) for coord in (star['x'], star['y'], star['z'])]
-            print(compute_euclidian_distance(sol, star_coordinates))
-            print(star['dist'])
-
-        k_nearest_stars = sorted(find_distances_from_point(sol, stars))[:k]
-        print('The {} nearest stars to {} are:'.format(k, sol))
-        print(k_nearest_stars)
+        # Parse command line arguments.
+        args = parse_args()
+        k = args.num_nearest_neighbors
+        # Single search point: use online algorithm.
+        if len(args.search_points) == 1:
+            search_point = args.search_points[0]
+            knn = BoundedPriorityQueue(k)  # Keep track of k nearest neighbors.
+            for coords, star in star_coords(stars):
+                knn.enqueue(distance(search_point, coords), star)
+            print_stars(knn, k, search_point)
+        # Multiple search points: load stars into KDTree,
+        # use offline KNN algorithm.
+        else:
+            coords = list(star_coords(stars))
+            for search_point in args.search_points:
+                tree = KDTree(coords)
+                knn = tree.find_k_nearest_neighbors(search_point, k)
+                print_stars(knn, k, search_point)
