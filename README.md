@@ -9,7 +9,7 @@ To run this code, you'll need Make, Java 7, Python 3.5, and numpy installed inst
 All code is executable from a single command. Simply type:
 `make all_solutions`
 
-This will make a new `data` directory, and download the required dataset. All solutions are outputted to `solutions'.
+This will make a new `data` directory, and download the required dataset. All solutions are outputted to `solutions`.
 
 ## A note on Make
 This project uses [GNU Make](http://blog.kaggle.com/2012/10/15/make-for-data-scientists/) to orchestrate a data pipeline, which is defined in `Makefile`. 
