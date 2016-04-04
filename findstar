@@ -2,7 +2,11 @@
 # -*- coding: utf-8 -*-
 
 '''
-TODO
+Command line utility for finding k nearest neighbor stars around one or more
+user supplier points in space. Star dataset must be piped through stdin.
+
+Usage:
+cat star_data.csv | ./findstar -k 5 --search-points 0,0,0
 '''
 
 import sys
@@ -11,7 +15,7 @@ import argparse
 
 import numpy as np
 
-from starfinder import BoundedPriorityQueue, KDTree
+from starfinder import distance, BoundedPriorityQueue, KDTree
 
 
 def coord(s):
@@ -52,28 +56,17 @@ def load_stars(stream):
     for star in csv.DictReader(stream, fieldnames=fieldnames):
         yield star
 
-
-def distance(q, p):
-    '''
-    Compute distance between points p and q in Euclidean
-    space, represented as n-dimensional Euclidean vectors.
-
-    Use numpy array for performance and clarity.
-    '''
-    q = np.array(q)
-    p = np.array(p)
-    return np.sqrt(np.sum((q - p) ** 2))
-
-
-# TODO: rename
-def find_distances_from_point(point, stars):
+def star_coords(stars):
+    '''Generator that yields star coordinates.'''
     for star in stars:
-        star_coordinates = [float(coord) for coord
-                            in (star['x'], star['y'], star['z'])]
-        yield distance(point, star_coordinates)
-
+        coords = [float(coord) for coord in (star['x'], star['y'], star['z'])]
+        yield coords, star
 
 def print_stars(queue, k, search_point):
+    '''
+    Utility function to print k-nearest-neighbor stars found by
+    BoundedPriorityQueue.
+    '''
     print('The {} nearest stars to {} are:'.format(k, search_point))
     for node in queue:
         distance = node.key
@@ -84,28 +77,24 @@ def print_stars(queue, k, search_point):
         print("{0}: {1:.2f} parsecs".format(star, distance))
     print('\n')
 
-
-def star_coords(stars):
-    '''Generator that yields star coordinates.'''
-    for star in stars:
-        coords = [float(coord) for coord in (star['x'], star['y'], star['z'])]
-        yield coords, star
-
 if __name__ == '__main__':
 
     # Read star dataset from stdin.
     with sys.stdin as stream:
         stars = load_stars(stream)
+
         # Parse command line arguments.
         args = parse_args()
         k = args.num_nearest_neighbors
-        # Single search point: use online algorithm.
+
+        # Single search point: use online KNN algorithm.
         if len(args.search_points) == 1:
             search_point = args.search_points[0]
             knn = BoundedPriorityQueue(k)  # Keep track of k nearest neighbors.
             for coords, star in star_coords(stars):
                 knn.enqueue(distance(search_point, coords), star)
             print_stars(knn, k, search_point)
+
         # Multiple search points: load stars into KDTree,
         # use offline KNN algorithm.
         else:

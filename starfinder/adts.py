@@ -1,18 +1,31 @@
 import numpy as np
 
-# TODO: understand KNN with bounded priority queue.
+def distance(point1, point2):
+    '''
+    Compute distance between points p and q in Euclidean
+    space, represented as n-dimensional Euclidean vectors.
+
+    Use numpy array for performance and clarity.
+    '''
+    q = np.array(point1)
+    p = np.array(point2)
+    return np.sqrt(np.sum((q - p) ** 2))
+
 class KDTree:
-    '''TODO: Docstring.'''
+    '''
+    K-dimensional tree implementation, a type of binary space
+    partitioning tree for doing nearest neighbor searches.
+    '''
 
     def __init__(self, point_list):
-        # Dimensionality of space tree is partitioning.
+        # Dimensionality of space the tree is partitioning.
         self.d = len(point_list[0])
         # Build tree and save reference to root.
         self.root = self.build(point_list, 0)
 
     class Node():
         '''
-        Construct for binary tree node.
+        Constructor for binary tree node.
         '''
         def __init__(self):
             self.point = None  # Multidimensional node key.
@@ -22,7 +35,7 @@ class KDTree:
 
     def build(self, point_list, level):
         '''
-        TODO: this
+        Build KDTree from list of k-d points.
         Elements in point list should be a tuple representing
         a k-dimensional point, and an arbitrary object associated
         with that point.
@@ -49,12 +62,16 @@ class KDTree:
         # Recursively construct subtrees on either side of split.
         # Store points lesser than median (along current axis) in left subtree.
         root.left = self.build(sorted_points[:median_ix], level + 1)
-        # Store points greater than or equal to median in right subtree.
+        # Store points greater than median (along current axis) in right subtree.
         root.right = self.build(sorted_points[median_ix + 1:], level + 1)
         return root
 
     def find_k_nearest_neighbors(self, search_point, k):
-        # Variables needed by KNN routine.
+        '''
+        Find k nearest neighbors to client-supplied search point.
+        Returns a BoundedPriorityQueue that can be iterated through
+        for nearest neighbors.
+        '''
         self.search_point = search_point
         self.bpq = BoundedPriorityQueue(k)
         self.knn(self.root, level=0)
@@ -62,11 +79,13 @@ class KDTree:
 
     def knn(self, current_node, level):
         '''
-        TODO: recursive function.
+        K nearest neighbors algorithm. Performs recursive
+        search on KDTree, using a BoundedPriorityQueue to keep
+        track of K nearest neighbors.
         '''
         # Change axis we split on at each level of the tree.
         axis = level % self.d
-        a = self.search_point[axis]  # Relevant Dimension (?) of point. TODO: fix comment.
+        a = self.search_point[axis]  # Value of search point on current dimension.
 
         ################
         # WALKING DOWN #
@@ -95,7 +114,7 @@ class KDTree:
         # Attempt to insert node into bounded priority queue.
         # If queue is full, it will only be kept if it is closer than the
         # kth closest point we've seen so far.
-        distance_to_point = self.distance(current_node.point, self.search_point)
+        distance_to_point = distance(current_node.point, self.search_point)
         self.bpq.enqueue(distance_to_point, current_node.attr)
 
         # Walk back up the tree, check whether candidate hypersphere
@@ -114,75 +133,6 @@ class KDTree:
             # If not, continue to unwind the recursion, implicitly
             # eliminating all other points from the splitting hyperplane.
 
-    def find_nearest_neighbor(self, search_point):
-        # Variables needed by NN routine.
-        self.search_point = search_point
-        self.best_guess_node = None
-        self.best_guess_distance = float('inf')
-        self.nn(self.root, level=0)
-        return self.best_guess_node
-
-    def nn(self, current_node, level):
-        '''
-        TODO: recursive function.
-        '''
-        # Change axis we split on at each level of the tree.
-        axis = level % self.d
-        a = self.search_point[axis]  # Relevant Dimension (?) of point. TODO: fix comment.
-
-        ################
-        # WALKING DOWN #
-        ################
-        # Walk down the tree recursively, as if you were looking for
-        # the search point in the tree, until you reach a tree leaf.
-        # Save that node point as the "best guess node."
-
-        # Base case: tree leaf reached.
-        if current_node is None:
-            return
-
-        # Descend left or right subtree, on whether search point is greater than
-        # or less than current node point on the current axis. Equivalent to
-        # picking the region of space created by the current point's splitting
-        # hyperplane that search point is in.
-        if a < current_node.point[axis]:
-            self.nn(current_node.left, level + 1)
-        else:
-            self.nn(current_node.right, level + 1)
-
-        ##############
-        # WALKING UP #
-        ##############
-        # After recursion bottoms out, walk back up the tree. If current node point is
-        # closer to search point than best guess, make it the new best guess.
-        distance_to_point = self.distance(current_node.point, self.search_point)
-        if distance_to_point < self.best_guess_distance:
-            self.best_guess_node = current_node
-            self.best_guess_distance = distance_to_point
-
-        # Walk back up the tree, check whether candidate hypersphere
-        # created by our current best guess node crosses splitting
-        # hyperplane of current node.
-        if abs(current_node.point[axis] - a) < self.best_guess_distance:
-            # If so, check other side of the tree to see if there are
-            # closer points than our best guess.
-            if a < current_node.point[axis]:
-                self.nn(current_node.right, level + 1)
-            # If not, continue to unwind the recursion, implicitly
-            # eliminating all other points from the splitting hyperplane.
-
-    def distance(self, point1, point2):
-        '''
-        Compute distance between points p and q in Euclidean
-        space, represented as n-dimensional vectors.
-
-        Use numpy array for code clarity.
-        '''
-        q = np.array(point1)
-        p = np.array(point2)
-        return np.sqrt(np.sum((q - p) ** 2))
-
-
 class PriorityQueue():
 
     def __init__(self, k):
@@ -192,7 +142,9 @@ class PriorityQueue():
         self.size = 0
         self.max_size = k
 
-    # Helper methods.
+    ##################
+    # Helper methods #
+    ##################
     def swap(self, ix, parent_ix):
         '''Exchange a node with its parent in the heap.'''
         temp_node = self.heap[ix]
@@ -215,9 +167,11 @@ class PriorityQueue():
         elif self.heap[a]['key'] > self.heap[b]['key']:
             return 1
         else:
-            return 0  # TODO: think through this.
+            return 0
 
-    # Heap methods.
+    ################
+    # Heap methods #
+    ################
     def sink(self, ix):
         while (ix * 2) <= self.size:
             min_child_ix = self.find_min_child(ix)
@@ -255,7 +209,9 @@ class PriorityQueue():
         ix = parent_ix
 
 
-    # PriorityQueue API.
+    #####################
+    # PriorityQueue API #
+    #####################
     def push(self, key, value):
         '''Insert operation.'''
         self.heap.append({'key': key, 'value': value})
@@ -370,8 +326,3 @@ class BoundedPriorityQueue():
         self.head = min_node.next
         self.size -= 1
         return min_node.key, min_node.value
-
-if __name__ == '__main__':
-    point_list = [(2,3), (5,4), (9,6), (4,7), (8,1), (7,2)]
-    tree = build_kdtree(point_list, len(point_list))
-    print_tree(tree)
