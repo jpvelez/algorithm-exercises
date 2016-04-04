@@ -11,7 +11,7 @@ All code is executable from a single command. Simply type:
 
 This will make a new `data` directory, and download the required dataset. All solutions are outputted to `solutions'.
 
-# A note on Make
+## A note on Make
 This project uses [GNU Make](http://blog.kaggle.com/2012/10/15/make-for-data-scientists/) to orchestrate a data pipeline, which is defined in `Makefile`. 
 
 If you're new to Make, don't worry! It's simple. A Makefile consists of a series of tasks that take input files and product output files. For example:
